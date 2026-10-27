@@ -1,0 +1,32 @@
+[package]
+name = "drum-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+
+[[bin]]
+name = "drum"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+fs2 = "0.4"
+libc = "0.2"
+rand = "0.8"
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+ssh-key = { version = "0.6", features = ["ed25519", "rand_core"] }
+tempfile = "3"
+uuid = { version = "1", features = ["v4"] }
+url = "2"
+zeroize = "1"
+
+semver = "1"
+
+[dev-dependencies]
+base64 = "0.22"
+dotenvy = "0.15"
+percent-encoding = "2"

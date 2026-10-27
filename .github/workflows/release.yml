@@ -1,0 +1,78 @@
+name: Build CLI release assets
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing vMAJOR.MINOR.PATCH tag with a draft GitHub Release
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Validate tag and install target
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          version=$(awk -F '"' '/^version = / {print $2; exit}' Cargo.toml)
+          test "$RELEASE_TAG" = "v$version"
+          printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup target add "$TARGET"
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools cmake clang
+      - run: cargo test --locked
+      - name: Package
+        env:
+          TARGET: ${{ matrix.target }}
+        run: sh scripts/package-release.sh "$TARGET"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+  attach:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Attach assets to existing draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          version=$(awk -F '"' '/^version = / {print $2; exit}' Cargo.toml)
+          test "$RELEASE_TAG" = "v$version"
+          test "$(find dist -name '*.tar.gz' | wc -l)" -eq 4
+          printf '%s\n' "$version" > dist/version.txt
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" = true
+          gh release upload "$RELEASE_TAG" dist/*
